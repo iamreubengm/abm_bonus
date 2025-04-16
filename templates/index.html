@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+            <html>
+            <head>
+                <title>MCP Debate Agents</title>
+                <style>
+                    body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+                    .debate-config { background: #f5f5f5; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+                    .debate-log { background: #f9f9f9; padding: 20px; border-radius: 8px; height: 500px; overflow-y: auto; margin-bottom: 20px; }
+                    .pro { color: #2c6b9e; border-left: 4px solid #2c6b9e; padding-left: 10px; margin: 10px 0; }
+                    .con { color: #993333; border-left: 4px solid #993333; padding-left: 10px; margin: 10px 0; }
+                    .moderator { color: #336633; border-left: 4px solid #336633; padding-left: 10px; margin: 10px 0; }
+                    .system { color: #666; font-style: italic; margin: 5px 0; }
+                    button { padding: 10px 15px; background: #4a86e8; color: white; border: none; border-radius: 4px; cursor: pointer; }
+                    input, select { padding: 8px; margin: 5px 0 15px 0; width: 100%; box-sizing: border-box; }
+                    h1, h2 { color: #333; }
+                    hr { border: 0; height: 1px; background: #ddd; margin: 15px 0; }
+                    .status-bar { background: #e5e5e5; padding: 10px; border-radius: 4px; margin-bottom: 10px; }
+                </style>
+            </head>
+            <body>
+                <h1>MCP Debate Agents</h1>
+                
+                <div class="debate-config">
+                    <h2>Configure Debate</h2>
+                    <label for="topic">Debate Topic:</label>
+                    <input type="text" id="topic" value="{{ default_topic }}">
+                    
+                    <label for="rounds">Number of Rounds:</label>
+                    <input type="number" id="rounds" min="1" max="5" value="{{ default_rounds }}">
+                    
+                    <button id="start-btn">Start Debate</button>
+                </div>
+                
+                <div class="status-bar" id="status-bar">Ready to start debate</div>
+                
+                <div class="debate-log" id="debate-log">
+                    <p>Configure your debate parameters and click Start Debate</p>
+                </div>
+                
+                <div id="download-area" style="margin-top: 20px; display: none;">
+                    <button id="download-btn">Download Transcript</button>
+                    <button id="new-debate-btn" style="margin-left: 10px; background: #f0ad4e;">New Debate</button>
+                </div>
+                
+                <script>
+                    let debateId = null;
+                    let pollingInterval = null;
+                    
+                    document.getElementById('start-btn').addEventListener('click', function() {
+                        const topic = document.getElementById('topic').value;
+                        const rounds = document.getElementById('rounds').value;
+                        
+                        if (!topic) {
+                            alert("Please enter a debate topic");
+                            return;
+                        }
+                        
+                        // Update status
+                        document.getElementById('status-bar').textContent = "Starting debate...";
+                        document.getElementById('start-btn').disabled = true;
+                        
+                        // Clear previous debate
+                        document.getElementById('debate-log').innerHTML = '<p>Initializing debate...</p>';
+                        document.getElementById('download-area').style.display = 'none';
+                        
+                        // Start new debate
+                        fetch('/start_debate', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                topic: topic,
+                                rounds: rounds
+                            }),
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            debateId = data.debate_id;
+                            
+                            // Start polling for updates
+                            pollingInterval = setInterval(pollDebateStatus, 1000);
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            document.getElementById('status-bar').textContent = "Error starting debate";
+                            document.getElementById('start-btn').disabled = false;
+                        });
+                    });
+                    
+                    function pollDebateStatus() {
+                        if (!debateId) return;
+                        
+                        fetch(`/debate_status/${debateId}`)
+                        .then(response => response.json())
+                        .then(data => {
+                            updateDebateLog(data);
+                            
+                            // Update status bar
+                            if (data.status === 'running') {
+                                document.getElementById('status-bar').textContent = "Debate in progress...";
+                            } else if (data.status === 'completed') {
+                                document.getElementById('status-bar').textContent = "Debate completed!";
+                                document.getElementById('start-btn').disabled = false;
+                                document.getElementById('download-area').style.display = 'block';
+                                clearInterval(pollingInterval);
+                            } else if (data.status === 'error') {
+                                document.getElementById('status-bar').textContent = "Error occurred during debate";
+                                document.getElementById('start-btn').disabled = false;
+                                clearInterval(pollingInterval);
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                        });
+                    }
+                    
+                    function updateDebateLog(data) {
+                        const logElement = document.getElementById('debate-log');
+                        logElement.innerHTML = '';
+                        
+                        data.messages.forEach(msg => {
+                            const messageDiv = document.createElement('div');
+                            
+                            // Style based on role
+                            if (msg.role === 'ProAgent') {
+                                messageDiv.classList.add('pro');
+                                messageDiv.innerHTML = `<strong>PRO:</strong> ${msg.content}`;
+                            } else if (msg.role === 'ConAgent') {
+                                messageDiv.classList.add('con');
+                                messageDiv.innerHTML = `<strong>CON:</strong> ${msg.content}`;
+                            } else if (msg.role === 'Moderator') {
+                                messageDiv.classList.add('moderator');
+                                messageDiv.innerHTML = `<strong>MODERATOR:</strong> ${msg.content}`;
+                            } else if (msg.role === 'system') {
+                                messageDiv.classList.add('system');
+                                messageDiv.innerHTML = `${msg.content}`;
+                            } else {
+                                messageDiv.innerHTML = msg.content;
+                            }
+                            
+                            logElement.appendChild(messageDiv);
+                            
+                            // Don't add horizontal rule after system messages
+                            if (msg.role !== 'system') {
+                                logElement.appendChild(document.createElement('hr'));
+                            }
+                        });
+                        
+                        // Auto-scroll to bottom
+                        logElement.scrollTop = logElement.scrollHeight;
+                    }
+                    
+                    document.getElementById('download-area').addEventListener('click', function(e) {
+                        if (e.target.id === 'download-btn') {
+                            if (!debateId) return;
+                            window.location.href = `/download/${debateId}`;
+                        } else if (e.target.id === 'new-debate-btn') {
+                            // Reset for new debate
+                            debateId = null;
+                            document.getElementById('debate-log').innerHTML = '<p>Configure your debate parameters and click Start Debate</p>';
+                            document.getElementById('download-area').style.display = 'none';
+                            document.getElementById('status-bar').textContent = "Ready to start debate";
+                        }
+                    });
+                </script>
+            </body>
+            </html>
