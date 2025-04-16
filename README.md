@@ -26,14 +26,14 @@ To start the web interface, run the command below:
 python web_interface.py
 ```  
   
-Then open your browser and navigate to: http://127.0.0.1:5000
+Then open your browser and navigate to: http://127.0.0.1:5000  
 Through the web interface, you can:  
 - Enter a debate topic  
 - Select the number of debate rounds  
 - Start the debate and watch it progress in real-time  
 - Download the debate transcript when completed  
   
-  
+
 
 
 
